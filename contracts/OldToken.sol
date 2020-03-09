@@ -155,6 +155,19 @@ library SafeMath {
     }
 }
 
+contract ERC20Basic {
+    uint256 public totalSupply;
+
+    bool public transfersEnabled;
+
+    function balanceOf(address who) public view returns (uint256);
+
+    function transfer(address to, uint256 value) public returns (bool);
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+}
+
+
 contract ERC20 {
     uint256 public totalSupply;
 
@@ -175,39 +188,14 @@ contract ERC20 {
     event Approval(address indexed _owner, address indexed _spender, uint256 _value);
 }
 
-contract ERC223Basic {
-    uint256 public totalSupply;
 
-    bool public transfersEnabled;
-
-    function balanceOf(address who) public view returns (uint256);
-
-    function transfer(address to, uint256 value) public returns (bool);
-
-    function transfer(address to, uint256 value, bytes memory data) public;
-
-    event Transfer(address indexed from, address indexed to, uint256 value, bytes data);
-
-}
-
-contract ERC223ReceivingContract {
-    /**
-     * @dev Standard ERC223 function that will handle incoming token transfers.
-     *
-     * @param _from  Token sender address.
-     * @param _value Amount of tokens.
-     * @param _data  Transaction metadata.
-     */
-    function tokenFallback(address _from, uint _value, bytes memory _data) public;
-}
-
-contract ERC223Token is ERC223Basic {
+contract BasicToken is ERC20Basic {
     using SafeMath for uint256;
 
-    mapping(address => uint256) balances; // List of user balances.
+    mapping (address => uint256) balances;
 
     /**
-    * @dev protection against short address attack
+    * Protection against short address attack
     */
     modifier onlyPayloadSize(uint numwords) {
         assert(msg.data.length == numwords * 32 + 4);
@@ -215,84 +203,36 @@ contract ERC223Token is ERC223Basic {
     }
 
     /**
-     * @dev Transfer the specified amount of tokens to the specified address.
-     *      Invokes the `tokenFallback` function if the recipient is a contract.
-     *      The token transfer fails if the recipient is a contract
-     *      but does not implement the `tokenFallback` function
-     *      or the fallback function to receive funds.
-     *
-     * @param _to    Receiver address.
-     * @param _value Amount of tokens that will be transferred.
-     * @param _data  Transaction metadata.
-     */
-    function transfer(address _to, uint _value, bytes memory _data) public onlyPayloadSize(3) {
-        // Standard function transfer similar to ERC20 transfer with no _data .
-        // Added due to backwards compatibility reasons .
-        uint codeLength;
+    * @dev transfer token for a specified address
+    * @param _to The address to transfer to.
+    * @param _value The amount to be transferred.
+    */
+    function transfer(address _to, uint256 _value) public onlyPayloadSize(2) returns (bool) {
         require(_to != address(0));
         require(_value <= balances[msg.sender]);
         require(transfersEnabled);
 
-        assembly {
-        // Retrieve the size of the code on target address, this needs assembly .
-            codeLength := extcodesize(_to)
-        }
-
+        // SafeMath.sub will throw if there is not enough balance.
         balances[msg.sender] = balances[msg.sender].sub(_value);
         balances[_to] = balances[_to].add(_value);
-        if(codeLength>0) {
-            ERC223ReceivingContract receiver = ERC223ReceivingContract(_to);
-            receiver.tokenFallback(msg.sender, _value, _data);
-        }
-        emit Transfer(msg.sender, _to, _value, _data);
-    }
-
-    /**
-     * @dev Transfer the specified amount of tokens to the specified address.
-     *      This function works the same with the previous one
-     *      but doesn't contain `_data` param.
-     *      Added due to backwards compatibility reasons.
-     *
-     * @param _to    Receiver address.
-     * @param _value Amount of tokens that will be transferred.
-     */
-    function transfer(address _to, uint _value) public onlyPayloadSize(2) returns(bool) {
-        uint codeLength;
-        bytes memory empty;
-        require(_to != address(0));
-        require(_value <= balances[msg.sender]);
-        require(transfersEnabled);
-
-        assembly {
-        // Retrieve the size of the code on target address, this needs assembly .
-            codeLength := extcodesize(_to)
-        }
-
-        balances[msg.sender] = balances[msg.sender].sub(_value);
-        balances[_to] = balances[_to].add(_value);
-        if(codeLength>0) {
-            ERC223ReceivingContract receiver = ERC223ReceivingContract(_to);
-            receiver.tokenFallback(msg.sender, _value, empty);
-        }
-        emit Transfer(msg.sender, _to, _value, empty);
+        emit Transfer(msg.sender, _to, _value);
         return true;
     }
 
-
     /**
-     * @dev Returns balance of the `_owner`.
-     *
-     * @param _owner   The address whose balance will be returned.
-     * @return balance Balance of the `_owner`.
-     */
+    * @dev Gets the balance of the specified address.
+    * @param _owner The address to query the the balance of.
+    * @return An uint256 representing the amount owned by the passed address.
+    */
     function balanceOf(address _owner) public view returns (uint256 balance) {
         return balances[_owner];
     }
 }
 
-contract StandardToken is ERC20, ERC223Token {
 
-    mapping(address => mapping(address => uint256)) internal allowed;
+contract StandardToken is ERC20, BasicToken {
+
+    mapping (address => mapping (address => uint256)) internal allowed;
 
     /**
      * @dev Transfer tokens from one address to another
@@ -355,7 +295,8 @@ contract StandardToken is ERC20, ERC223Token {
         uint oldValue = allowed[msg.sender][_spender];
         if (_subtractedValue > oldValue) {
             allowed[msg.sender][_spender] = 0;
-        } else {
+        }
+        else {
             allowed[msg.sender][_spender] = oldValue.sub(_subtractedValue);
         }
         emit Approval(msg.sender, _spender, allowed[msg.sender][_spender]);
@@ -364,101 +305,51 @@ contract StandardToken is ERC20, ERC223Token {
 
 }
 
-interface ITokenB {
-    function mint(address _to, uint256 _amount) external returns (bool);
-}
-
-contract OldToken is StandardToken {
-
-    string public constant name = "FirstMining Token (FMT)";
-    string public constant symbol = "XMiningA";
-    uint8 public constant decimals = 2;
-    uint256 public constant INITIAL_SUPPLY = 10**10 * (10**uint256(decimals));
+contract Ownable {
     address payable public owner;
-    mapping (address => bool) public contractUsers;
-    bool public mintingFinished;
-    ITokenB public contractTokenB;
-
 
     event OwnerChanged(address indexed previousOwner, address indexed newOwner);
-    event TokenBurned(address indexed owner, uint256 amountTokens);
-    event Mint(address indexed to, uint256 amount);
-    event MintFinished();
 
-    constructor(address payable _owner) public {
-        totalSupply = INITIAL_SUPPLY;
-        owner = _owner;
-        owner = msg.sender; // for testing
-        balances[owner] = INITIAL_SUPPLY;
-        transfersEnabled = true;
-        mintingFinished = false;
-    }
-
-    // fallback function can be used to buy tokens
-    function() payable external {
-        revert();
-    }
-
+    /**
+     * @dev Throws if called by any account other than the owner.
+     */
     modifier onlyOwner() {
         require(msg.sender == owner);
         _;
     }
 
-    modifier onlyOwnerOrUser() {
-        require(msg.sender == owner || contractUsers[msg.sender]);
-        _;
+
+    /**
+     * @dev Allows the current owner to transfer control of the contract to a newOwner.
+     * @param _newOwner The address to transfer ownership to.
+     */
+    function changeOwner(address payable _newOwner) onlyOwner internal {
+        require(_newOwner != address(0));
+        emit OwnerChanged(owner, _newOwner);
+        owner = _newOwner;
     }
+
+}
+/**
+ * @title Mintable token
+ * @dev Simple ERC20 Token example, with mintable token creation
+ * @dev Issue: * https://github.com/OpenZeppelin/zeppelin-solidity/issues/120
+ * Based on code by TokenMarketNet: https://github.com/TokenMarketNet/ico/blob/master/contracts/MintableToken.sol
+ */
+
+contract MintableToken is StandardToken, Ownable {
+    string public constant name = "ENZO";
+    string public constant symbol = "NZO";
+    uint8 public constant decimals = 18;
+
+    event Mint(address indexed to, uint256 amount);
+    event MintFinished();
+
+    bool public mintingFinished;
 
     modifier canMint() {
         require(!mintingFinished);
         _;
-    }
-
-    /**
-     * @dev Function to stop minting new tokens.
-     * @return True if the operation was successful.
-     */
-    function finishMinting() onlyOwner canMint public returns (bool) {
-        mintingFinished = true;
-        emit MintFinished();
-        return true;
-    }
-
-    function changeOwner(address payable _newOwner) onlyOwner public returns (bool){
-        require(_newOwner != address(0));
-        emit OwnerChanged(owner, _newOwner);
-        owner = _newOwner;
-        return true;
-    }
-
-    /**
-    * @dev Add an contract admin
-    */
-    function setContractUser(address _user, bool _isUser) public onlyOwner {
-        contractUsers[_user] = _isUser;
-    }
-
-    function enableTransfers(bool _transfersEnabled) onlyOwner public {
-        transfersEnabled = _transfersEnabled;
-    }
-
-    function initContractTokenB (address _addressContract) public onlyOwner {
-        require(_addressContract != address(0));
-        contractTokenB = ITokenB(_addressContract);
-    }
-
-    function burn(uint256 _amount) public returns (bool){
-        require(0 < _amount);
-        address _owner = msg.sender;
-        require(_amount <= balances[_owner]);
-        require(_amount <= totalSupply);
-
-        balances[_owner] = balances[_owner].sub(_amount);
-        totalSupply = totalSupply.sub(_amount);
-        contractTokenB.mint(_owner, _amount);
-
-        emit TokenBurned(msg.sender, _amount);
-        return true;
     }
 
     /**
@@ -467,13 +358,21 @@ contract OldToken is StandardToken {
      * @param _amount The amount of tokens to mint.
      * @return A boolean that indicates if the operation was successful.
      */
-    function mint(address _to, uint256 _amount) canMint onlyOwnerOrUser external returns (bool) {
-        require(_to != address(0));
-        require(_amount > 0);
-        require(totalSupply.add(_amount) <= 10**10 * (10**uint256(decimals)));
+    function mint(address _to, uint256 _amount, address _owner) canMint internal returns (bool) {
         balances[_to] = balances[_to].add(_amount);
-        totalSupply = totalSupply.add(_amount);
+        balances[_owner] = balances[_owner].sub(_amount);
         emit Mint(_to, _amount);
+        emit Transfer(_owner, _to, _amount);
+        return true;
+    }
+
+    /**
+     * @dev Function to stop minting new tokens.
+     * @return True if the operation was successful.
+     */
+    function finishMinting() onlyOwner canMint internal returns (bool) {
+        mintingFinished = true;
+        emit MintFinished();
         return true;
     }
 
@@ -481,14 +380,55 @@ contract OldToken is StandardToken {
      * Peterson's Law Protection
      * Claim tokens
      */
-    function claimTokens(address payable _token) public onlyOwner {
-        if (_token == address(0)) {
+    function claimTokens(address _token) public onlyOwner {
+        if (_token == address(0) ) {
             owner.transfer(address(this).balance);
             return;
         }
-        OldToken token = OldToken(_token);
+        MintableToken token = MintableToken(_token);
         uint256 balance = token.balanceOf(address(this));
         token.transfer(owner, balance);
         emit Transfer(_token, owner, balance);
     }
+}
+
+contract OldToken is MintableToken {
+    using SafeMath for uint256;
+
+    uint256 public constant INITIAL_SUPPLY = 21 * 10**9 * (10 ** uint256(decimals));
+    address payable public owner;
+    bool public mintingFinished;
+
+
+    event OwnerChanged(address indexed previousOwner, address indexed newOwner);
+    event Mint(address indexed to, uint256 amount);
+    event MintFinished();
+
+    constructor(address payable _owner) public {
+        totalSupply = INITIAL_SUPPLY;
+        owner = _owner;
+        owner = msg.sender; // for testing
+        transfersEnabled = true;
+        mintingFinished = false;
+
+        bool resultMintForOwner = mintForOwner(owner);
+        require(resultMintForOwner);
+    }
+
+    function mintForOwner(address _walletOwner) internal returns (bool result) {
+        result = false;
+        require(_walletOwner != address(0));
+        balances[_walletOwner] = balances[_walletOwner].add(totalSupply);
+        result = true;
+    }
+
+    // fallback function can be used to buy tokens
+    function() payable external {
+        revert();
+    }
+
+    function enableTransfers(bool _transfersEnabled) onlyOwner public {
+        transfersEnabled = _transfersEnabled;
+    }
+
 }

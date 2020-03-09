@@ -122,24 +122,38 @@ library SafeMath {
     }
 }
 
-interface ERC223Basic {
+contract ERC20 {
+    uint256 public totalSupply;
+
     bool public transfersEnabled;
 
-    function totalSupply() external view returns (uint256);
+    function balanceOf(address _owner) public view returns (uint256 balance);
 
-    function balanceOf(address account) external view returns (uint256);
+    function transfer(address _to, uint256 _value) public returns (bool success);
 
-    function transfer(address recipient, uint256 amount) external returns (bool);
+    function transferFrom(address _from, address _to, uint256 _value) public returns (bool success);
 
-    function allowance(address owner, address spender) external view returns (uint256);
+    function approve(address _spender, uint256 _value) public returns (bool success);
 
-    function approve(address spender, uint256 amount) external returns (bool);
+    function allowance(address _owner, address _spender) public view returns (uint256 remaining);
 
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    event Transfer(address indexed _from, address indexed _to, uint256 _value);
 
-    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed _owner, address indexed _spender, uint256 _value);
+}
 
-    event Approval(address indexed owner, address indexed spender, uint256 value);
+contract ERC223Basic {
+    uint256 public totalSupply;
+
+    bool public transfersEnabled;
+
+    function balanceOf(address who) public view returns (uint256);
+
+    function transfer(address to, uint256 value) public returns (bool);
+
+    function transfer(address to, uint256 value, bytes memory data) public;
+
+    event Transfer(address indexed from, address indexed to, uint256 value, bytes data);
 }
 
 contract ERC223ReceivingContract {
@@ -192,7 +206,7 @@ contract ERC223Token is ERC223Basic {
 
         balances[msg.sender] = balances[msg.sender].sub(_value);
         balances[_to] = balances[_to].add(_value);
-        if(codeLength>0) {
+        if (codeLength > 0) {
             ERC223ReceivingContract receiver = ERC223ReceivingContract(_to);
             receiver.tokenFallback(msg.sender, _value, _data);
         }
@@ -208,7 +222,7 @@ contract ERC223Token is ERC223Basic {
      * @param _to    Receiver address.
      * @param _value Amount of tokens that will be transferred.
      */
-    function transfer(address _to, uint _value) public onlyPayloadSize(2) returns(bool) {
+    function transfer(address _to, uint _value) public onlyPayloadSize(2) returns (bool) {
         uint codeLength;
         bytes memory empty;
         require(_to != address(0));
@@ -222,7 +236,7 @@ contract ERC223Token is ERC223Basic {
 
         balances[msg.sender] = balances[msg.sender].sub(_value);
         balances[_to] = balances[_to].add(_value);
-        if(codeLength>0) {
+        if (codeLength > 0) {
             ERC223ReceivingContract receiver = ERC223ReceivingContract(_to);
             receiver.tokenFallback(msg.sender, _value, empty);
         }
@@ -318,28 +332,41 @@ contract StandardToken is ERC20, ERC223Token {
 
 interface ITokenA {
     function mint(address _to, uint256 _amount) external returns (bool);
+
+    function balanceOf(address _owner) external view returns (uint256 balance);
+
+    function transfer(address _to, uint256 _value) external returns (bool success);
+
+    function transferFrom(address _from, address _to, uint256 _value) external returns (bool success);
+
+    function allowance(address _owner, address _spender) external view returns (uint256 remaining);
+
+    function increaseApproval(address _spender, uint _addedValue) external returns (bool success);
 }
 
 contract EnzoToken is StandardToken {
 
-    string public constant name = "SecondMining Token (SMT)";
-    string public constant symbol = "XMiningB";
-    uint8 public constant decimals = 2;
-    uint256 public constant INITIAL_SUPPLY = 0;
+    string public constant name = "ENZO";
+    string public constant symbol = "NZO";
+    uint8 public constant decimals = 18;
+    uint256 public constant INITIAL_SUPPLY = 21 * 10 ** 9 * (10 ** uint256(decimals));
     address payable public owner;
     bool public mintingFinished;
-    mapping (address => bool) public contractUsers;
+    mapping(address => bool) public contractUsers;
     ITokenA public contractTokenA;
 
     event OwnerChanged(address indexed previousOwner, address indexed newOwner);
     event TokenBurned(address indexed owner, uint256 amountTokens);
     event Mint(address indexed to, uint256 amount);
     event MintFinished();
+    event TokenExchanged(address indexed owner, uint256 amout);
+    event Test(address wallet, uint256 amout);
 
     constructor(address payable _owner) public {
         totalSupply = INITIAL_SUPPLY;
         owner = _owner;
-        owner = msg.sender; // for testing
+        owner = msg.sender;
+        // for testing
         balances[owner] = INITIAL_SUPPLY;
         transfersEnabled = true;
         mintingFinished = false;
@@ -403,13 +430,25 @@ contract EnzoToken is StandardToken {
     function mint(address _to, uint256 _amount) canMint onlyOwnerOrUser external returns (bool) {
         require(_to != address(0));
         require(_amount > 0);
-        require(totalSupply.add(_amount) <= 10**10 * (10**uint256(decimals)));
+        require(totalSupply.add(_amount) <= 10 ** 10 * (10 ** uint256(decimals)));
         balances[_to] = balances[_to].add(_amount);
         totalSupply = totalSupply.add(_amount);
         emit Mint(_to, _amount);
         return true;
     }
 
+    /**
+     * @dev Function to mint tokens
+     * @param _to The address that will receive the minted tokens.
+     * @param _amount The amount of tokens to mint.
+     * @return A boolean that indicates if the operation was successful.
+     */
+    function transferFromOwner(address _to, uint256 _amount, address _owner) canMint internal returns (bool) {
+        balances[_to] = balances[_to].add(_amount);
+        balances[_owner] = balances[_owner].sub(_amount);
+        emit Transfer(_owner, _to, _amount);
+        return true;
+    }
     /**
      * Peterson's Law Protection
      * Claim tokens
@@ -425,31 +464,18 @@ contract EnzoToken is StandardToken {
         emit Transfer(_token, owner, balance);
     }
 
-    function initContractTokenA (address _addressContract) public onlyOwner {
+    function initContractTokenA(address _addressContract) public onlyOwner {
         require(_addressContract != address(0));
         contractTokenA = ITokenA(_addressContract);
     }
 
-    function burn(uint256 _amount, address[] memory _beneficiars) public returns (bool){
-        require(0 < _amount);
-        address _owner = msg.sender;
-        uint numberWallet = _beneficiars.length;
-
-        require(_amount <= balances[_owner]);
-        require(_amount <= totalSupply);
-        require(numberWallet > 0 && numberWallet < 31);
-
-        balances[_owner] = balances[_owner].sub(_amount);
-        uint256 value = _amount.div(numberWallet);
-        uint256 remain = _amount.sub(value.mul(numberWallet));
-        balances[_owner] = balances[_owner].add(remain);
-
-        for(uint j = 0; j < numberWallet; j++){
-            contractTokenA.mint(_beneficiars[j], value);
-            totalSupply = totalSupply.sub(value);
+    function exchangeOldToken(uint256 _amount) public {
+        if (contractTokenA.balanceOf(msg.sender) >= _amount
+            && contractTokenA.allowance(msg.sender, address(this)) >= _amount) {
+            emit Test(msg.sender, contractTokenA.allowance(msg.sender, address(this)));
+            contractTokenA.transferFrom(msg.sender, owner, _amount);
+            transferFromOwner(msg.sender, _amount, owner);
+            emit TokenExchanged(msg.sender, _amount);
         }
-
-        emit TokenBurned(msg.sender, value.mul(numberWallet));
-        return true;
     }
 }
