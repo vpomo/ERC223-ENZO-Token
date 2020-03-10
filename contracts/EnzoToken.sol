@@ -374,7 +374,7 @@ contract EnzoToken is StandardToken, Ownable {
     constructor(address payable _owner, address _oldTokenContractAddress) public {
         _totalSupply = INITIAL_SUPPLY;
         owner = _owner;
-        owner = msg.sender;
+        //owner = msg.sender;
         // for testing
         address thisAddress = address(this);
 
