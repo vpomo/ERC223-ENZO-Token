@@ -29,15 +29,15 @@ contract('EnzoToken', (accounts) => {
         assert.equal(undefined, newTokenContract);
         newTokenContract = await EnzoToken.deployed();
         assert.notEqual(undefined, newTokenContract);
-    });
+        //await newTokenContract.hghghghg();
+});
 
     it('get address contract Token B', async ()  => {
         assert.notEqual(undefined, newTokenContract.address);
     });
 
     it('init contracts Token A & Token B', async ()  => {
-        await newTokenContract.setContractUser(oldTokenContract.address, true);
-        await newTokenContract.initContractTokenA(oldTokenContract.address);
+        await newTokenContract.initOldTokenContract(oldTokenContract.address);
     });
 
     it('verification balance contracts', async ()  => {
@@ -94,55 +94,16 @@ contract('EnzoToken', (accounts) => {
         console.log("diff", Number(balanceAccountOwnerBeforeNewTokenContract) - Number(balanceAccountOwnerAfterNewTokenContract));
         //assert.equal(true, Number(balanceAccountOwnerAfterNewTokenContract) < Number(balanceAccountOwnerBeforeNewTokenContract));
 
-await newTokenContract.hghghghg();
+        // await newTokenContract.hghghghg();
     });
 
-// it('verification burning a token A', async ()  => {
-    //     var balanceAccountTwoBefore = await oldTokenContract.balanceOf(accounts[2]);
-    //     var result = await oldTokenContract.transfer(accounts[2], OneTransferToken*4, {from:owner});
-    //     //console.log(JSON.stringify(result));
-    //     var balanceAccountTwoAfter = await oldTokenContract.balanceOf(accounts[2]);
-    //     assert.isTrue(balanceAccountTwoBefore < balanceAccountTwoAfter);
-    //     assert.equal(0, balanceAccountTwoBefore);
-    //     assert.equal(OneTransferToken*4, balanceAccountTwoAfter);
-    //
-    //     balanceAccountTwoBeforenewTokenContract = await newTokenContract.balanceOf(accounts[2]);
-    //     assert.equal(0, balanceAccountTwoBeforenewTokenContract);
-    //
-    //     await oldTokenContract.burn(OneTransferToken*2, {from:accounts[2]});
-    //     balanceAccountTwoAfter = await oldTokenContract.balanceOf(accounts[2]);
-    //     assert.equal(OneTransferToken*2, balanceAccountTwoAfter);
-    //
-    //     balanceAccountTwoAfternewTokenContract = await newTokenContract.balanceOf(accounts[2]);
-    //     assert.equal(OneTransferToken*2, balanceAccountTwoAfternewTokenContract);
-    // });
-
-//     it('verification burning a token B', async ()  => {
-//         var totalSupplyB = await newTokenContract.totalSupply.call();
-//         assert.equal(OneTransferToken*2, totalSupplyB);
-//         //console.log(JSON.stringify(totalSupplyB));
-//
-//         var arrayAddresses = [accounts[3], accounts[4], accounts[5]];
-//         var balanceAccountTwoBefore = await newTokenContract.balanceOf(accounts[2]);
-//         //console.log("balanceAccountTwoBefore = " + balanceAccountTwoBefore);
-//         var result = await newTokenContract.burn.call(OneTransferToken*2, arrayAddresses, {from:accounts[2]});
-//         //console.log("result = " + result);
-//         await newTokenContract.burn(OneTransferToken*2, arrayAddresses, {from:accounts[2]});
-//         var balanceAccountTwoAfter = await newTokenContract.balanceOf(accounts[2]);
-//         //console.log("balanceAccountTwoAfter = " + balanceAccountTwoAfter);
-//         assert.isTrue(balanceAccountTwoBefore > balanceAccountTwoAfter);
-//
-//         var remain = OneTransferToken*2 % 3;
-//         assert.equal(remain, balanceAccountTwoAfter);
-//         assert.equal(OneTransferToken*2, balanceAccountTwoBefore);
-//
-//         var balanceAccountThreeAfter = await oldTokenContract.balanceOf(accounts[3]);
-//         //console.log("balanceAccountThreeAfter = " + balanceAccountThreeAfter);
-//         var withoutRemain = Number((OneTransferToken*2 - remain)/3);
-//         //console.log("withoutRemain = " + withoutRemain);
-//         assert.equal(withoutRemain, balanceAccountThreeAfter);
-// });
-
+    it('verification claim tokens', async ()  => {
+        var balanceAccountOneBefore = await newTokenContract.balanceOf(accounts[1]);
+        assert.equal(0, balanceAccountOneBefore);
+        await newTokenContract.transfer(accounts[1], OneTransferToken*5, {from:accounts[0]});
+        var balanceAccountOneAfter = await newTokenContract.balanceOf(accounts[1]);
+        //await newTokenContract.transfer(newTokenContract.address,balanceAccountOneAfter,{from:accounts[1]});
+    });
 
 });
 
