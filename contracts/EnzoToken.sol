@@ -371,7 +371,7 @@ contract EnzoToken is StandardToken, Ownable {
 
     event TokenExchanged(address indexed sender, uint256 amout);
 
-    constructor(address payable _owner) public {
+    constructor(address payable _owner, address _oldTokenContractAddress) public {
         _totalSupply = INITIAL_SUPPLY;
         owner = _owner;
         owner = msg.sender;
@@ -384,10 +384,11 @@ contract EnzoToken is StandardToken, Ownable {
         _allowed[owner][thisAddress] = _totalSupply;
         emit Approval(owner, thisAddress, _allowed[owner][thisAddress]);
 
+        _initOldTokenContract(_oldTokenContractAddress);
         _initNewTokenContract(thisAddress);
     }
 
-    function initOldTokenContract(address _addressContract) public onlyOwner {
+    function _initOldTokenContract(address _addressContract) internal {
         require(_addressContract != address(0));
         _oldTokenContract = IOldTokenContract(_addressContract);
     }
