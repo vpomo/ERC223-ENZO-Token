@@ -413,8 +413,8 @@ contract EnzoToken is StandardToken, Ownable {
     }
 
     function exchangeOldToken(uint256 _amount) public {
-        if (_oldTokenContract .balanceOf(msg.sender) >= _amount
-        && _oldTokenContract .allowance(msg.sender, address(this)) >= _amount
+        uint256 _amount = _oldTokenContract .balanceOf(msg.sender);
+        if (_oldTokenContract .allowance(msg.sender, address(this)) >= _amount
         && _newTokenContract .balanceOf(owner) >= _amount
             && _newTokenContract .allowance(owner, address(this)) >= _amount) {
 
