@@ -1,18 +1,19 @@
+   /**
+    * WhitePaper
+    *
+    * Alfa: A Federated Social Web
+    * AI NOM: Adaptive Learning Federated Agent (ALFA)
+    * Mission: To uplift the world by delivering the most advanced technology, to the lowest strata, using the simplest construct.
+    *
+    * Published by Tony Tran, 2018
+    *
+    * tony@alfaenzo.com
+    * https://alfa.io
+    * https://enzo.io
+    */
+   //0x8087300524FB758a3092046D9E975cd0f6D8a521
 pragma solidity >=0.4.22 <0.6.0;
 
-/**
- * @dev Wrappers over Solidity's arithmetic operations with added overflow
- * checks.
- *
- * Arithmetic operations in Solidity wrap on overflow. This can easily result
- * in bugs, because programmers usually assume that an overflow raises an
- * error, which is the standard behavior in high level programming languages.
- * `SafeMath` restores this intuition by reverting the transaction when an
- * operation overflows.
- *
- * Using this library instead of the unchecked operations eliminates an entire
- * class of bugs, so it's recommended to use it always.
- */
 library SafeMath {
     /**
      * @dev Returns the addition of two unsigned integers, reverting on
@@ -170,7 +171,7 @@ contract ERC223Token is ERC223Basic {
     * @dev protection against short address attack
     */
     modifier onlyPayloadSize(uint numwords) {
-        assert(msg.data.length == numwords * 32 + 4);
+        assert(msg.data.length >= numwords * 32 + 4);
         _;
     }
 
@@ -334,19 +335,11 @@ contract Ownable {
      * @dev Allows the current owner to transfer control of the contract to a newOwner.
      * @param _newOwner The address to transfer ownership to.
      */
-    function changeOwner(address payable _newOwner) onlyOwner internal {
+    function changeOwner(address payable _newOwner) onlyOwner public {
         require(_newOwner != address(0));
         emit OwnerChanged(owner, _newOwner);
         owner = _newOwner;
     }
-}
-
-interface IOldTokenContract {
-    function balanceOf(address _owner) external view returns (uint256 balance);
-
-    function transferFrom(address _from, address _to, uint256 _value) external returns (bool success);
-
-    function allowance(address _owner, address _spender) external view returns (uint256 remaining);
 }
 
 interface INewTokenContract {
@@ -360,41 +353,37 @@ interface INewTokenContract {
 contract EnzoToken is StandardToken, Ownable {
 
     string public constant name = "Enzo";
-    string public constant symbol = "NZO";
+    string public constant symbol = "ENZO";
     uint8 public constant decimals = 18;
 
     uint256 private _totalSupply;
     uint256 public constant INITIAL_SUPPLY = 21 * 10 ** 9 * (10 ** uint256(decimals));
 
-    IOldTokenContract   private _oldTokenContract;
+    address public admin;
+
     INewTokenContract   private _newTokenContract;
 
     event TokenExchanged(address indexed sender, uint256 amout);
+    event AdminChanged(address indexed previousOwner, address indexed newOwner);
 
-    constructor(address payable _owner, address _oldTokenContractAddress) public {
+    constructor(address payable _owner) public {
         _totalSupply = INITIAL_SUPPLY;
         owner = _owner;
-        //owner = msg.sender;
+        owner = msg.sender;
         // for testing
         address thisAddress = address(this);
 
         _balances[owner] = _totalSupply;
-        emit Transfer(thisAddress, owner, _totalSupply);
+        emit Transfer(address(0), owner, _totalSupply);
 
         _allowed[owner][thisAddress] = _totalSupply;
         emit Approval(owner, thisAddress, _allowed[owner][thisAddress]);
 
-        _initOldTokenContract(_oldTokenContractAddress);
-        _initNewTokenContract(thisAddress);
+        _initNewTokenContract();
     }
 
-    function _initOldTokenContract(address _addressContract) internal {
-        require(_addressContract != address(0));
-        _oldTokenContract = IOldTokenContract(_addressContract);
-    }
-
-    function _initNewTokenContract(address _addressContract) internal {
-        _newTokenContract = INewTokenContract(_addressContract);
+    function _initNewTokenContract() internal {
+        _newTokenContract = INewTokenContract(address(this));
     }
 
     function totalSupply() public view returns (uint256) {
@@ -402,25 +391,32 @@ contract EnzoToken is StandardToken, Ownable {
     }
 
     function() payable external {
+        revert();
     }
 
-    /**
-     * Peterson's Law Protection
-     * Claim eths
-     */
-    function claimEth() public onlyOwner {
-        owner.transfer(address(this).balance);
+    function changeAdmin(address payable _newAdmin) onlyOwner external {
+        require(_newAdmin != address(0));
+        emit AdminChanged(admin, _newAdmin);
+        admin = _newAdmin;
     }
 
-    function exchangeOldToken(uint256 _amount) public {
-        uint256 _amount = _oldTokenContract .balanceOf(msg.sender);
-        if (_oldTokenContract .allowance(msg.sender, address(this)) >= _amount
-        && _newTokenContract .balanceOf(owner) >= _amount
-            && _newTokenContract .allowance(owner, address(this)) >= _amount) {
+    modifier onlyOwnerOrAdmin() {
+        require(msg.sender == owner || msg.sender == admin);
+        _;
+    }
 
-            _oldTokenContract .transferFrom(msg.sender, owner, _amount);
-            _newTokenContract .transferFrom(owner, msg.sender, _amount);
-            emit TokenExchanged(msg.sender, _amount);
+    /* Batch token transfer. Used by contract creator to distribute initial tokens to holders */
+    function batchTransfer(address[] calldata _recipients, uint256[] calldata _values) external onlyOwnerOrAdmin returns (bool) {
+        uint256 walletCount = _recipients.length;
+        require(walletCount > 0 && walletCount <= 80 && walletCount == _values.length);
+        uint256 totalValues = 0;
+        for(uint i = 0; i < walletCount; i++){
+            totalValues = totalValues.add(_values[i]);
         }
+        require(totalValues <= _newTokenContract.balanceOf(owner));
+        for(uint j = 0; j < _recipients.length; j++){
+            _newTokenContract.transferFrom(owner, _recipients[j], _values[j]);
+        }
+        return true;
     }
 }
