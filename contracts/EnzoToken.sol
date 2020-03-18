@@ -142,6 +142,8 @@ contract ERC20 {
 }
 
 contract ERC223Basic {
+    function totalSupply() external view returns (uint256);
+
     function balanceOf(address who) public view returns (uint256);
 
     function transfer(address to, uint256 value) public returns (bool);
@@ -187,26 +189,7 @@ contract ERC223Token is ERC223Basic {
      * @param _data  Transaction metadata.
      */
     function transfer(address _to, uint _value, bytes memory _data) public onlyPayloadSize(3) {
-        require(_to != address(0));
-        require(_value <= _balances[msg.sender]);
-
-        if (isContract(_to)) {
-            ERC223ReceivingContract receiver = ERC223ReceivingContract(_to);
-            receiver.tokenFallback(msg.sender, _value, _data);
-        }
-        _balances[msg.sender] = _balances[msg.sender].sub(_value);
-        _balances[_to] = _balances[_to].add(_value);
-        emit Transfer(msg.sender, _to, _value, _data);
-    }
-
-    function isContract(address _address) private view returns (bool) {
-        uint length;
-        if (_address == address(0)) return false;
-        assembly {
-        //retrieve the size of the code on target address, this needs assembly
-            length := extcodesize(_address)
-        }
-        return (length > 0);
+        _transfer(_to, _value, _data);
     }
 
     /**
@@ -220,20 +203,33 @@ contract ERC223Token is ERC223Basic {
      */
     function transfer(address _to, uint _value) public onlyPayloadSize(2) returns (bool) {
         bytes memory empty = hex"00000000";
+        _transfer(_to, _value, empty);
+        return true;
+    }
+
+    function _transfer(address _to, uint _value, bytes memory _anyData) internal {
         require(_to != address(0));
         require(_value <= _balances[msg.sender]);
 
         if (isContract(_to)) {
             ERC223ReceivingContract receiver = ERC223ReceivingContract(_to);
-            receiver.tokenFallback(msg.sender, _value, empty);
+            receiver.tokenFallback(msg.sender, _value, _anyData);
         }
 
         _balances[msg.sender] = _balances[msg.sender].sub(_value);
         _balances[_to] = _balances[_to].add(_value);
-        emit Transfer(msg.sender, _to, _value, empty);
-        return true;
+        emit Transfer(msg.sender, _to, _value, _anyData);
     }
 
+    function isContract(address _address) private view returns (bool) {
+        uint length;
+        if (_address == address(0)) return false;
+        assembly {
+        //retrieve the size of the code on target address, this needs assembly
+            length := extcodesize(_address)
+        }
+        return (length > 0);
+    }
 
     /**
      * @dev Returns balance of the `_owner`.
@@ -279,6 +275,7 @@ contract StandardToken is ERC20, ERC223Token {
      * @param _value The amount of tokens to be spent.
      */
     function approve(address _spender, uint256 _value) public returns (bool) {
+        require((_value == 0) || (_allowed[msg.sender][_spender] == 0));
         _allowed[msg.sender][_spender] = _value;
         emit Approval(msg.sender, _spender, _value);
         return true;
@@ -319,7 +316,7 @@ contract StandardToken is ERC20, ERC223Token {
 }
 
 contract Ownable {
-    address payable public owner;
+    address public owner;
 
     event OwnerChanged(address indexed previousOwner, address indexed newOwner);
 
@@ -335,7 +332,7 @@ contract Ownable {
      * @dev Allows the current owner to transfer control of the contract to a newOwner.
      * @param _newOwner The address to transfer ownership to.
      */
-    function changeOwner(address payable _newOwner) onlyOwner public {
+    function changeOwner(address _newOwner) onlyOwner public {
         require(_newOwner != address(0));
         emit OwnerChanged(owner, _newOwner);
         owner = _newOwner;
@@ -352,12 +349,12 @@ interface INewTokenContract {
 
 contract EnzoToken is StandardToken, Ownable {
 
-    string public constant name = "Enzo";
-    string public constant symbol = "ENZO";
-    uint8 public constant decimals = 18;
-
+    string private constant _name = "Enzo";
+    string private constant _symbol = "ENZO";
+    uint8 private constant _decimals = 18;
     uint256 private _totalSupply;
-    uint256 public constant INITIAL_SUPPLY = 21 * 10 ** 9 * (10 ** uint256(decimals));
+
+    uint256 public constant INITIAL_SUPPLY = 21 * 10 ** 9 * (10 ** uint256(_decimals));
 
     address public admin;
 
@@ -366,19 +363,13 @@ contract EnzoToken is StandardToken, Ownable {
     event TokenExchanged(address indexed sender, uint256 amout);
     event AdminChanged(address indexed previousOwner, address indexed newOwner);
 
-    constructor(address payable _owner) public {
+    constructor(address _owner, address _admin) public {
+        require(_owner != address(0) && _admin != address(0));
         _totalSupply = INITIAL_SUPPLY;
         owner = _owner;
-        owner = msg.sender;
-        // for testing
-        address thisAddress = address(this);
-
+        admin = _admin;
         _balances[owner] = _totalSupply;
         emit Transfer(address(0), owner, _totalSupply);
-
-        _allowed[owner][thisAddress] = _totalSupply;
-        emit Approval(owner, thisAddress, _allowed[owner][thisAddress]);
-
         _initNewTokenContract();
     }
 
@@ -386,15 +377,27 @@ contract EnzoToken is StandardToken, Ownable {
         _newTokenContract = INewTokenContract(address(this));
     }
 
-    function totalSupply() public view returns (uint256) {
+    function totalSupply() external view returns (uint256) {
         return _totalSupply;
+    }
+
+    function name() external pure returns (string memory) {
+        return _name;
+    }
+
+    function symbol() external pure returns (string memory) {
+        return _symbol;
+    }
+
+    function decimals() external pure returns (uint8) {
+        return _decimals;
     }
 
     function() payable external {
         revert();
     }
 
-    function changeAdmin(address payable _newAdmin) onlyOwner external {
+    function changeAdmin(address _newAdmin) onlyOwner external {
         require(_newAdmin != address(0));
         emit AdminChanged(admin, _newAdmin);
         admin = _newAdmin;
@@ -408,14 +411,15 @@ contract EnzoToken is StandardToken, Ownable {
     /* Batch token transfer. Used by contract creator to distribute initial tokens to holders */
     function batchTransfer(address[] calldata _recipients, uint256[] calldata _values) external onlyOwnerOrAdmin returns (bool) {
         uint256 walletCount = _recipients.length;
-        require(walletCount > 0 && walletCount <= 80 && walletCount == _values.length);
+        require(walletCount > 0 && walletCount <= 100 && walletCount == _values.length);
         uint256 totalValues = 0;
         for(uint i = 0; i < walletCount; i++){
             totalValues = totalValues.add(_values[i]);
         }
-        require(totalValues <= _newTokenContract.balanceOf(owner));
+        require(totalValues <= _newTokenContract.balanceOf(msg.sender) && _newTokenContract.allowance(msg.sender, address(this)) >= totalValues);
+
         for(uint j = 0; j < _recipients.length; j++){
-            _newTokenContract.transferFrom(owner, _recipients[j], _values[j]);
+            _newTokenContract.transferFrom(msg.sender, _recipients[j], _values[j]);
         }
         return true;
     }

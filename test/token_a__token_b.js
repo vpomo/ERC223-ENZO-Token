@@ -46,8 +46,8 @@ contract('EnzoToken', (accounts) => {
         var recipients = [accounts[2], accounts[3]];
         var values = [OneTransferToken*4, OneTransferToken*6];
 
+        await newTokenContract.approve(newTokenContract.address, OneTransferToken*10);
         var result = await newTokenContract.batchTransfer(recipients, values);
-
 
         var balanceAccount2After = await newTokenContract.balanceOf(accounts[2]);
         assert.equal(OneTransferToken*4, Number(balanceAccount2After));
